@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import ImageGrayscale from './components/ImageGrayscale.vue'
+import AuthWrapper from './components/AuthWrapper.vue'
 import PwaPrompt from './components/PwaPrompt.vue'
 
 const pwaPrompt = ref()
@@ -8,10 +9,10 @@ const pwaPrompt = ref()
 </script>
 
 <template>
-  <div>
+  <AuthWrapper>
     <ImageGrayscale />
     <PwaPrompt ref="pwaPrompt" />
-  </div>
+  </AuthWrapper>
 </template>
 
 <style>
