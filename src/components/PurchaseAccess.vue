@@ -42,8 +42,8 @@ const emit = defineEmits(['close', 'payment-success'])
 const processing = ref(false)
 const error = ref('')
 const stripe = ref<any>(null)
-const elements = ref<any>(null)
 const authStore = useAuthStore()
+console.log(props.show)
 
 const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'your-stripe-public-key'
 
