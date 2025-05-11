@@ -1,5 +1,8 @@
 <template>
   <div>
+    <div class="status-bar" :class="{ 'offline': !isOnline }">
+      {{ isOnline ? 'Online' : 'Offline' }} Mode
+    </div>
     <h2>Image Grayscale Converter</h2>
     <input type="file" accept="image/*" @change="onFileChange" />
     <div v-if="imageUrl" style="margin-top: 1em;">
@@ -18,18 +21,53 @@
       Convert to Grayscale
     </button>
     <canvas ref="canvas" style="display: none;"></canvas>
+
+    <!-- Recent Conversions -->
+    <div v-if="recentImages.length > 0" class="recent-images">
+      <h3>Recent Conversions</h3>
+      <div class="recent-grid">
+        <div v-for="(img, index) in recentImages" :key="index" class="recent-item">
+          <img :src="img.grayscale" alt="Recent conversion" style="max-width: 100px;" />
+          <div class="recent-actions">
+            <a :href="img.grayscale" download="grayscale.png" class="small-button">Download</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const imageUrl = ref<string | null>(null)
 const grayscaleUrl = ref<string | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const originalImage = ref<HTMLImageElement | null>(null)
 const imageLoaded = ref(false)
+const isOnline = ref(navigator.onLine)
+const recentImages = ref<{ original: string; grayscale: string }[]>([])
 let imageFile: File | null = null
+
+// Load recent images from localStorage
+onMounted(() => {
+  const saved = localStorage.getItem('recentImages')
+  if (saved) {
+    recentImages.value = JSON.parse(saved)
+  }
+
+  window.addEventListener('online', updateOnlineStatus)
+  window.addEventListener('offline', updateOnlineStatus)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
+})
+
+function updateOnlineStatus() {
+  isOnline.value = navigator.onLine
+}
 
 function onFileChange(event: Event) {
   const target = event.target as HTMLInputElement
@@ -72,10 +110,40 @@ function convertToGrayscale() {
 
   // Convert canvas to URL
   grayscaleUrl.value = canvas.value.toDataURL('image/png')
+
+  // Save to recent images
+  if (imageUrl.value && grayscaleUrl.value) {
+    recentImages.value.unshift({
+      original: imageUrl.value,
+      grayscale: grayscaleUrl.value
+    })
+    // Keep only last 4 images
+    if (recentImages.value.length > 4) {
+      recentImages.value.pop()
+    }
+    // Save to localStorage
+    localStorage.setItem('recentImages', JSON.stringify(recentImages.value))
+  }
 }
 </script>
 
 <style scoped>
+.status-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  background-color: #4CAF50;
+  color: white;
+  text-align: center;
+  z-index: 1000;
+}
+
+.status-bar.offline {
+  background-color: #f44336;
+}
+
 .download-link {
   display: inline-block;
   padding: 8px 16px;
@@ -100,5 +168,39 @@ button {
 
 button:hover {
   background-color: #007B9E;
+}
+
+.recent-images {
+  margin-top: 2em;
+  padding: 1em;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 1em;
+  margin-top: 1em;
+}
+
+.recent-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.small-button {
+  padding: 4px 8px;
+  background-color: #4CAF50;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+.small-button:hover {
+  background-color: #45a049;
 }
 </style> 
