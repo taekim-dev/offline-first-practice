@@ -2,18 +2,9 @@
 import { ref } from 'vue'
 import ImageGrayscale from './components/ImageGrayscale.vue'
 import PwaPrompt from './components/PwaPrompt.vue'
-import { registerSW } from 'virtual:pwa-register'
 
 const pwaPrompt = ref()
 
-const updateSW = registerSW({
-  onNeedRefresh() {
-    pwaPrompt.value?.showUpdatePrompt()
-  },
-  onOfflineReady() {
-    console.log('App ready to work offline')
-  },
-})
 </script>
 
 <template>
