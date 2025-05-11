@@ -17,10 +17,16 @@
         <a :href="grayscaleUrl" download="grayscale.png" class="download-link">Download Grayscale Image</a>
       </div>
     </div>
-    <button v-if="imageUrl && imageLoaded" @click="convertToGrayscale" style="margin-top: 1em;">
-      Convert to Grayscale
+    <button 
+      v-if="imageUrl && imageLoaded" 
+      @click="convertToGrayscale" 
+      :disabled="processing"
+      style="margin-top: 1em;"
+    >
+      {{ processing ? 'Processing...' : 'Convert to Grayscale' }}
     </button>
     <canvas ref="canvas" style="display: none;"></canvas>
+    <canvas ref="outputCanvas" style="display: none;"></canvas>
 
     <!-- Recent Conversions -->
     <div v-if="recentImages.length > 0" class="recent-images">
@@ -38,19 +44,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import { initWasm, processImageWithWasm } from '../utils/wasm-processor'
 
 const imageUrl = ref<string | null>(null)
 const grayscaleUrl = ref<string | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
+const outputCanvas = ref<HTMLCanvasElement | null>(null)
 const originalImage = ref<HTMLImageElement | null>(null)
 const imageLoaded = ref(false)
 const isOnline = ref(navigator.onLine)
 const recentImages = ref<{ original: string; grayscale: string }[]>([])
+const processing = ref(false)
 let imageFile: File | null = null
 
-// Load recent images from localStorage
-onMounted(() => {
+// Initialize WebAssembly module
+onMounted(async () => {
+  try {
+    await initWasm()
+  } catch (error) {
+    console.error('Failed to initialize WASM:', error)
+  }
+
+  // Load recent images from localStorage
   const saved = localStorage.getItem('recentImages')
   if (saved) {
     recentImages.value = JSON.parse(saved)
@@ -58,11 +75,6 @@ onMounted(() => {
 
   window.addEventListener('online', updateOnlineStatus)
   window.addEventListener('offline', updateOnlineStatus)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('online', updateOnlineStatus)
-  window.removeEventListener('offline', updateOnlineStatus)
 })
 
 function updateOnlineStatus() {
@@ -79,50 +91,54 @@ function onFileChange(event: Event) {
   }
 }
 
-function convertToGrayscale() {
-  if (!canvas.value || !originalImage.value) return
+async function convertToGrayscale() {
+  if (!canvas.value || !outputCanvas.value || !originalImage.value) return
+  
+  processing.value = true
+  
+  try {
+    const ctx = canvas.value.getContext('2d')
+    const outputCtx = outputCanvas.value.getContext('2d')
+    if (!ctx || !outputCtx) return
 
-  const ctx = canvas.value.getContext('2d')
-  if (!ctx) return
+    // Set canvas sizes
+    canvas.value.width = originalImage.value.naturalWidth
+    canvas.value.height = originalImage.value.naturalHeight
+    outputCanvas.value.width = originalImage.value.naturalWidth
+    outputCanvas.value.height = originalImage.value.naturalHeight
 
-  // Set canvas size to match original image
-  canvas.value.width = originalImage.value.naturalWidth
-  canvas.value.height = originalImage.value.naturalHeight
+    // Draw original image to canvas
+    ctx.drawImage(originalImage.value, 0, 0)
 
-  // Draw image on canvas
-  ctx.drawImage(originalImage.value, 0, 0)
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.value.width, canvas.value.height)
 
-  // Get image data
-  const imageData = ctx.getImageData(0, 0, canvas.value.width, canvas.value.height)
-  const data = imageData.data
+    // Process image using WebAssembly
+    const processedImageData = await processImageWithWasm(imageData)
 
-  // Convert to grayscale
-  for (let i = 0; i < data.length; i += 4) {
-    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
-    data[i] = avg     // Red
-    data[i + 1] = avg // Green
-    data[i + 2] = avg // Blue
-    // data[i + 3] is Alpha (unchanged)
-  }
+    // Put processed image data on output canvas
+    outputCtx.putImageData(processedImageData, 0, 0)
 
-  // Put the grayscale image data back on the canvas
-  ctx.putImageData(imageData, 0, 0)
+    // Convert to URL
+    grayscaleUrl.value = outputCanvas.value.toDataURL('image/png')
 
-  // Convert canvas to URL
-  grayscaleUrl.value = canvas.value.toDataURL('image/png')
-
-  // Save to recent images
-  if (imageUrl.value && grayscaleUrl.value) {
-    recentImages.value.unshift({
-      original: imageUrl.value,
-      grayscale: grayscaleUrl.value
-    })
-    // Keep only last 4 images
-    if (recentImages.value.length > 4) {
-      recentImages.value.pop()
+    // Save to recent images
+    if (imageUrl.value && grayscaleUrl.value) {
+      recentImages.value.unshift({
+        original: imageUrl.value,
+        grayscale: grayscaleUrl.value
+      })
+      // Keep only last 4 images
+      if (recentImages.value.length > 4) {
+        recentImages.value.pop()
+      }
+      // Save to localStorage
+      localStorage.setItem('recentImages', JSON.stringify(recentImages.value))
     }
-    // Save to localStorage
-    localStorage.setItem('recentImages', JSON.stringify(recentImages.value))
+  } catch (error) {
+    console.error('Error processing image:', error)
+  } finally {
+    processing.value = false
   }
 }
 </script>
